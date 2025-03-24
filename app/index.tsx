@@ -6,18 +6,29 @@ import {
   Image, 
   TouchableOpacity, 
   ScrollView,
-  SafeAreaView
+  SafeAreaView,
+  Alert
 } from 'react-native';
-import { useAuth } from '../context/AuthContext';
-import { Link } from 'expo-router';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { router } from 'expo-router';
+import ListModal, { PackingList } from '../components/ListModal';
 
 export default function App() {
-  const { user, signOut } = useAuth();
-  
   // Animation states for mascot text
   const fullText = "Hi! I'm Packie";
   const [animatedText, setAnimatedText] = useState('');
   
+  // State for lists and modal
+  const [recentLists, setRecentLists] = useState<PackingList[]>([]);
+  const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
+  
+  // Load saved lists on component mount
+  useEffect(() => {
+    loadSavedLists();
+  }, []);
+  
+  // Animation effect
   useEffect(() => {
     let currentIndex = 0;
     const interval = setInterval(() => {
@@ -27,87 +38,167 @@ export default function App() {
       } else {
         clearInterval(interval);
       }
-    }, 100); // Speed of animation (milliseconds per character)
+    }, 100);
     
     return () => clearInterval(interval);
   }, []);
+  
+  // Load lists from AsyncStorage
+  const loadSavedLists = async () => {
+    try {
+      const savedListsJson = await AsyncStorage.getItem('packingLists');
+      if (savedListsJson) {
+        const savedLists = JSON.parse(savedListsJson) as PackingList[];
+        // Sort by most recent first
+        savedLists.sort((a, b) => b.createdAt - a.createdAt);
+        setRecentLists(savedLists);
+      }
+    } catch (error) {
+      console.error('Failed to load lists:', error);
+      Alert.alert('Error', 'Failed to load your saved lists.');
+    }
+  };
+  
+  // Save a new list
+  const saveNewList = async (listData: Omit<PackingList, 'id' | 'createdAt'>) => {
+    try {
+      // Create new list object
+      const newList: PackingList = {
+        id: Math.random().toString(36).substring(2, 9),
+        title: listData.title,
+        items: listData.items,
+        icon: listData.icon,
+        createdAt: Date.now()
+      };
+      
+      // Get existing lists or initialize empty array
+      const existingListsJson = await AsyncStorage.getItem('packingLists');
+      const existingLists: PackingList[] = existingListsJson 
+        ? JSON.parse(existingListsJson) 
+        : [];
+      
+      // Add new list and save back to storage
+      const updatedLists = [newList, ...existingLists];
+      await AsyncStorage.setItem('packingLists', JSON.stringify(updatedLists));
+      
+      // Update state
+      setRecentLists(updatedLists);
+      
+      // Close modal
+      setIsCreateModalVisible(false);
+      
+      Alert.alert('Success', 'Your list has been saved!');
+    } catch (error) {
+      console.error('Failed to save list:', error);
+      Alert.alert('Error', 'Failed to save your list. Please try again.');
+    }
+  };
 
+  // Navigate to saved lists screen
+  const goToSavedLists = () => {
+    router.push('/saved-lists');
+  };
+  
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Packie</Text>
-        <TouchableOpacity style={styles.settingsButton}>
-          <Text style={styles.settingsIcon}>⚙️</Text>
+        <TouchableOpacity style={styles.profileButton}>
+          <Ionicons name="person-outline" size={24} color="#4A3C2C" />
         </TouchableOpacity>
       </View>
       
       <ScrollView style={styles.scrollView}>
         <View style={styles.contentContainer}>
-          <Text style={styles.sectionTitle}>Start packing</Text>
-          <Text style={styles.subtitle}>Choose an activity or create your own list.</Text>
-          
-          <View style={styles.activitiesGrid}>
-            <View style={styles.row}>
-              <TouchableOpacity style={styles.activityCard}>
-                <Text style={styles.activityLabel}>Weekend trip</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity style={styles.activityCard}>
-                <Text style={styles.activityLabel}>Workout</Text>
-              </TouchableOpacity>
+          <View style={styles.heroSection}>
+            <View style={styles.heroTextContainer}>
+              <Text style={styles.heroTitle}>Ready to go?</Text>
+              <Text style={styles.heroSubtitle}>Let's make sure you have everything!</Text>
             </View>
-            
-            <View style={styles.row}>
-              <TouchableOpacity style={styles.activityCard}>
-                <Text style={styles.activityLabel}>Beach day</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity style={styles.activityCard}>
-                <Text style={styles.activityLabel}>Camping</Text>
-              </TouchableOpacity>
-            </View>
+            <Image 
+              source={require('../assets/images/packie1.svg')} 
+              style={styles.mascotImage}
+              resizeMode="contain"
+            />
           </View>
           
-          <TouchableOpacity style={styles.listItem}>
-            <View style={styles.listItemIcon}>
-              <Text>🔖</Text>
-            </View>
-            <View style={styles.listItemContent}>
-              <Text style={styles.listItemTitle}>Saved Lists</Text>
-              <Text style={styles.listItemSubtitle}>2 items</Text>
-            </View>
-            <Text style={styles.chevron}>›</Text>
-          </TouchableOpacity>
+          <Text style={styles.sectionTitle}>Check your items</Text>
+          <View style={styles.optionsRow}>
+            <TouchableOpacity 
+              style={styles.optionCard}
+              onPress={() => router.replace('/camera')}
+            >
+              <View style={styles.iconContainer}>
+                <Ionicons name="camera" size={28} color="#5D4FB7" />
+              </View>
+              <Text style={styles.optionLabel}>Take Photo</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.optionCard}
+              onPress={() => router.push('/check-list')}
+            >
+              <View style={styles.iconContainer}>
+                <MaterialIcons name="checklist" size={28} color="#5D4FB7" />
+              </View>
+              <Text style={styles.optionLabel}>Manual Check</Text>
+            </TouchableOpacity>
+          </View>
           
-          <TouchableOpacity style={styles.listItem}>
-            <View style={styles.listItemIcon}>
-              <Text>💡</Text>
-            </View>
-            <View style={styles.listItemContent}>
-              <Text style={styles.listItemTitle}>Packie's Tips</Text>
-              <Text style={styles.listItemSubtitle}>for the best beach day</Text>
-            </View>
-            <Text style={styles.chevron}>›</Text>
-          </TouchableOpacity>
+          <Text style={[styles.sectionTitle, {marginTop: 25}]}>Manage your lists</Text>
+          <View style={styles.optionsRow}>
+            <TouchableOpacity 
+              style={styles.optionCard}
+              onPress={() => setIsCreateModalVisible(true)}
+            >
+              <View style={styles.iconContainer}>
+                <Ionicons name="add" size={28} color="#5D4FB7" />
+              </View>
+              <Text style={styles.optionLabel}>Custom List</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.optionCard}
+              onPress={goToSavedLists}
+            >
+              <View style={styles.iconContainer}>
+                <Ionicons name="bookmark-outline" size={28} color="#5D4FB7" />
+              </View>
+              <Text style={styles.optionLabel}>Saved Lists</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </ScrollView>
       
+      {/* List Modal Component */}
+      <ListModal
+        visible={isCreateModalVisible}
+        onClose={() => setIsCreateModalVisible(false)}
+        onSave={saveNewList}
+      />
+      
       <View style={styles.tabBar}>
-        <TouchableOpacity style={styles.tabItem}>
-          <Text>🏠</Text>
-          <Text style={styles.tabLabel}>Home</Text>
+        <TouchableOpacity style={[styles.tabItem, styles.activeTab]}>
+          <Ionicons name="home" size={24} color="#5D4FB7" />
+          <Text style={[styles.tabLabel, styles.activeTabLabel]}>Home</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.tabItem}>
-          <Text>🎯</Text>
-          <Text style={styles.tabLabel}>Activities</Text>
+        
+        <TouchableOpacity 
+          style={styles.tabItem}
+          onPress={goToSavedLists}
+        >
+          <Ionicons name="bookmark-outline" size={24} color="#8B7355" />
+          <Text style={styles.tabLabel}>Saved Lists</Text>
         </TouchableOpacity>
+        
         <TouchableOpacity style={styles.tabItem}>
-          <Text>💡</Text>
-          <Text style={styles.tabLabel}>Tips</Text>
+          <Ionicons name="checkmark-circle-outline" size={24} color="#8B7355" />
+          <Text style={styles.tabLabel}>Check</Text>
         </TouchableOpacity>
+        
         <TouchableOpacity style={styles.tabItem}>
-          <Text>⚙️</Text>
-          <Text style={styles.tabLabel}>Settings</Text>
+          <Ionicons name="person-outline" size={24} color="#8B7355" />
+          <Text style={styles.tabLabel}>Profile</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -117,29 +208,28 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5DC', // Beige background to match auth screens
+    backgroundColor: '#F5F5DC', // Beige background
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: 15,
     paddingHorizontal: 20,
-    position: 'relative',
     backgroundColor: '#E8DBC5', // Slightly darker beige for header
   },
   headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#4A3C2C', // Warm brown color to match theme
-  },
-  settingsButton: {
-    position: 'absolute',
-    right: 20,
-  },
-  settingsIcon: {
     fontSize: 24,
-    color: '#4A3C2C',
+    fontWeight: 'bold',
+    color: '#4A3C2C', // Warm brown color
+  },
+  profileButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F8F4E3',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   scrollView: {
     flex: 1,
@@ -147,87 +237,135 @@ const styles = StyleSheet.create({
   contentContainer: {
     padding: 20,
   },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 8,
-    color: '#4A3C2C', // Warm brown color
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#6B5B45', // Slightly lighter brown
-    marginBottom: 24,
-  },
-  activitiesGrid: {
-    marginBottom: 30,
-  },
-  row: {
+  heroSection: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 15,
+    alignItems: 'center',
+    marginBottom: 30,
   },
-  activityCard: {
+  heroTextContainer: {
+    flex: 1,
+  },
+  heroTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#4A3C2C',
+    marginBottom: 8,
+  },
+  heroSubtitle: {
+    fontSize: 16,
+    color: '#6B5B45',
+  },
+  mascotImage: {
+    width: 100,
+    height: 100,
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 15,
+    color: '#4A3C2C',
+  },
+  optionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  optionCard: {
     width: '48%',
     borderRadius: 12,
-    overflow: 'hidden',
-    backgroundColor: '#F8F4E3', // Light beige for cards
+    backgroundColor: '#F8F4E3',
     padding: 15,
     borderWidth: 1,
     borderColor: '#E8DBC5',
-    height: 120, // Fixed height for cards
-    justifyContent: 'flex-end', // Place text at bottom
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 100,
   },
-  activityImage: {
-    width: '100%',
-    height: 180,
-    borderRadius: 12,
+  iconContainer: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#F0EAD6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 10,
   },
-  activityLabel: {
-    fontSize: 16,
+  optionLabel: {
+    fontSize: 14,
     fontWeight: '600',
-    marginTop: 8,
-    marginBottom: 8,
     color: '#4A3C2C',
+    textAlign: 'center',
   },
-  listItem: {
+  recentSection: {
+    marginTop: 25,
+    marginBottom: 30,
+  },
+  listCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E8DBC5', // Slightly darker beige
+    padding: 15,
+    backgroundColor: '#F8F4E3',
+    borderRadius: 12,
+    marginBottom: 15,
+    borderWidth: 1,
+    borderColor: '#E8DBC5',
   },
-  listItemIcon: {
+  listIconContainer: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#F8F4E3', // Light beige
+    backgroundColor: '#F0EAD6',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 15,
   },
-  listItemContent: {
+  listContent: {
     flex: 1,
   },
-  listItemTitle: {
+  listTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#4A3C2C', // Warm brown
+    color: '#4A3C2C',
   },
-  listItemSubtitle: {
+  listSubtitle: {
     fontSize: 14,
-    color: '#8B7355', // Tan color
+    color: '#8B7355',
     marginTop: 4,
   },
-  chevron: {
-    fontSize: 24,
-    color: '#8B7355', // Tan color
+  viewAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    marginTop: 5,
+  },
+  viewAllText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#5D4FB7',
+    marginRight: 8,
+  },
+  emptyListContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 30,
+    backgroundColor: '#F8F4E3',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E8DBC5',
+  },
+  emptyListText: {
+    fontSize: 16,
+    color: '#8B7355',
+    textAlign: 'center',
+    marginTop: 10,
   },
   tabBar: {
     flexDirection: 'row',
     borderTopWidth: 1,
-    borderTopColor: '#E8DBC5', // Slightly darker beige
+    borderTopColor: '#E8DBC5',
     paddingVertical: 10,
-    backgroundColor: '#F8F4E3', // Light beige
+    backgroundColor: '#F8F4E3',
   },
   tabItem: {
     flex: 1,
@@ -237,6 +375,15 @@ const styles = StyleSheet.create({
   tabLabel: {
     fontSize: 12,
     marginTop: 4,
-    color: '#4A3C2C', // Warm brown
+    color: '#4A3C2C',
+  },
+  activeTab: {
+    borderTopWidth: 2,
+    borderTopColor: '#5D4FB7',
+    marginTop: -1,
+  },
+  activeTabLabel: {
+    color: '#5D4FB7',
+    fontWeight: '600',
   },
 });
