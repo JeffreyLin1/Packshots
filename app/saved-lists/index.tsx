@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import ListModal, { PackingList } from '../../components/ListModal';
+import TabBar from '../../components/TabBar';
 
 export default function SavedListsScreen() {
   const [lists, setLists] = useState<PackingList[]>([]);
@@ -58,9 +59,15 @@ export default function SavedListsScreen() {
         icon: listData.icon,
       };
       
-      // Update the list in the array
-      const updatedLists = lists.map(list => 
-        list.id === selectedList.id ? updatedList : list
+      // Get existing lists
+      const existingListsJson = await AsyncStorage.getItem('packingLists');
+      if (!existingListsJson) return;
+      
+      const existingLists: PackingList[] = JSON.parse(existingListsJson);
+      
+      // Find and update the list
+      const updatedLists = existingLists.map(list => 
+        list.id === updatedList.id ? updatedList : list
       );
       
       // Save back to storage
@@ -68,21 +75,23 @@ export default function SavedListsScreen() {
       
       // Update state
       setLists(updatedLists);
-      setSelectedList(null);
-      setIsEditModalVisible(false);
       
-      Alert.alert('Success', 'Your list has been updated!');
+      // Close modal
+      setIsEditModalVisible(false);
+      setSelectedList(null);
+      
+      Alert.alert('Success', 'List updated successfully!');
     } catch (error) {
       console.error('Failed to update list:', error);
-      Alert.alert('Error', 'Failed to update your list. Please try again.');
+      Alert.alert('Error', 'Failed to update the list. Please try again.');
     }
   };
 
   // Delete a list
-  const deleteList = async (id: string) => {
+  const deleteList = async (listId: string) => {
     Alert.alert(
-      'Delete List',
-      'Are you sure you want to delete this list?',
+      'Confirm Delete',
+      'Are you sure you want to delete this list? This action cannot be undone.',
       [
         {
           text: 'Cancel',
@@ -93,10 +102,22 @@ export default function SavedListsScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              const updatedLists = lists.filter(list => list.id !== id);
+              // Get existing lists
+              const existingListsJson = await AsyncStorage.getItem('packingLists');
+              if (!existingListsJson) return;
+              
+              const existingLists: PackingList[] = JSON.parse(existingListsJson);
+              
+              // Filter out the list to delete
+              const updatedLists = existingLists.filter(list => list.id !== listId);
+              
+              // Save back to storage
               await AsyncStorage.setItem('packingLists', JSON.stringify(updatedLists));
+              
+              // Update state
               setLists(updatedLists);
-              Alert.alert('Success', 'List deleted successfully');
+              
+              Alert.alert('Success', 'List deleted successfully!');
             } catch (error) {
               console.error('Failed to delete list:', error);
               Alert.alert('Error', 'Failed to delete the list. Please try again.');
@@ -107,10 +128,18 @@ export default function SavedListsScreen() {
     );
   };
 
-  // Edit a list
-  const editList = (list: PackingList) => {
+  // Open edit modal for a list
+  const openEditModal = (list: PackingList) => {
     setSelectedList(list);
     setIsEditModalVisible(true);
+  };
+
+  // View a list
+  const viewList = (list: PackingList) => {
+    router.push({
+      pathname: '/check-list/[id]',
+      params: { id: list.id }
+    });
   };
 
   // Navigate to home screen
@@ -118,53 +147,14 @@ export default function SavedListsScreen() {
     router.push('/');
   };
 
-  // Render each list item
-  const renderListItem = ({ item }: { item: PackingList }) => {
-    // Calculate packing progress
-    const packedItems = item.items.filter(i => i.packed).length;
-    const totalItems = item.items.length;
-    const progress = totalItems > 0 ? Math.round((packedItems / totalItems) * 100) : 0;
-    
-    return (
-      <View style={styles.listCard}>
-        <View style={styles.listHeader}>
-          <View style={styles.listTitleContainer}>
-            <View style={styles.listIconContainer}>
-              <Ionicons name={item.icon as any} size={24} color="#5D4FB7" />
-            </View>
-            <Text style={styles.listTitle}>{item.title}</Text>
-          </View>
-          <View style={styles.listActions}>
-            <TouchableOpacity 
-              style={styles.actionButton}
-              onPress={() => editList(item)}
-            >
-              <Ionicons name="pencil-outline" size={20} color="#5D4FB7" />
-            </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.actionButton}
-              onPress={() => deleteList(item.id)}
-            >
-              <Ionicons name="trash-outline" size={20} color="#E57373" />
-            </TouchableOpacity>
-          </View>
-        </View>
-        
-        <View style={styles.listDetails}>
-          <Text style={styles.listSubtitle}>
-            {totalItems} items • {progress}% packed
-          </Text>
-          <Text style={styles.listDate}>
-            {new Date(item.createdAt).toLocaleDateString()}
-          </Text>
-        </View>
-        
-        <TouchableOpacity style={styles.viewButton}>
-          <Text style={styles.viewButtonText}>View List</Text>
-          <Ionicons name="chevron-forward" size={16} color="#5D4FB7" />
-        </TouchableOpacity>
-      </View>
-    );
+  // Format date
+  const formatDate = (timestamp: number) => {
+    const date = new Date(timestamp);
+    return date.toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'short', 
+      day: 'numeric' 
+    });
   };
 
   return (
@@ -173,67 +163,85 @@ export default function SavedListsScreen() {
         <Text style={styles.headerTitle}>Saved Lists</Text>
       </View>
       
-      {isLoading ? (
-        <View style={styles.loadingContainer}>
-          <Text>Loading your lists...</Text>
+      {lists.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Ionicons name="list-outline" size={48} color="#8B7355" />
+          <Text style={styles.emptyText}>No saved lists yet</Text>
+          <Text style={styles.emptySubtext}>Create a list to get started</Text>
+          <TouchableOpacity 
+            style={styles.createButton}
+            onPress={goToHome}
+          >
+            <Text style={styles.createButtonText}>Create a List</Text>
+          </TouchableOpacity>
         </View>
       ) : (
-        <>
-          {lists.length === 0 ? (
-            <View style={styles.emptyContainer}>
-              <Ionicons name="list-outline" size={60} color="#8B7355" />
-              <Text style={styles.emptyText}>No saved lists yet</Text>
-              <Text style={styles.emptySubtext}>
-                Create a new list from the home screen
-              </Text>
+        <FlatList
+          data={lists}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
+            <View style={styles.listCard}>
+              <View style={styles.listHeader}>
+                <View style={styles.listTitleContainer}>
+                  <View style={styles.listIconContainer}>
+                    <Ionicons name={item.icon || "list"} size={20} color="#5D4FB7" />
+                  </View>
+                  <Text style={styles.listTitle}>{item.title}</Text>
+                </View>
+                <View style={styles.listActions}>
+                  <TouchableOpacity 
+                    style={styles.actionButton}
+                    onPress={() => openEditModal(item)}
+                  >
+                    <Ionicons name="create-outline" size={20} color="#5D4FB7" />
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={styles.actionButton}
+                    onPress={() => deleteList(item.id)}
+                  >
+                    <Ionicons name="trash-outline" size={20} color="#E74C3C" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+              
+              <View style={styles.listDetails}>
+                <Text style={styles.listSubtitle}>{item.items.length} items</Text>
+                <Text style={styles.listDate}>{formatDate(item.createdAt)}</Text>
+              </View>
+              
+              <TouchableOpacity 
+                style={styles.viewButton}
+                onPress={() => viewList(item)}
+              >
+                <Text style={styles.viewButtonText}>View List</Text>
+                <Ionicons name="chevron-forward" size={16} color="#5D4FB7" />
+              </TouchableOpacity>
             </View>
-          ) : (
-            <FlatList
-              data={lists}
-              renderItem={renderListItem}
-              keyExtractor={item => item.id}
-              contentContainerStyle={styles.listContainer}
-            />
           )}
-        </>
+          contentContainerStyle={styles.listContainer}
+          showsVerticalScrollIndicator={false}
+        />
       )}
       
       {/* Edit List Modal */}
-      <ListModal
-        visible={isEditModalVisible}
-        onClose={() => {
-          setIsEditModalVisible(false);
-          setSelectedList(null);
-        }}
-        onSave={updateList}
-        initialList={selectedList || undefined}
-      />
+      {selectedList && (
+        <ListModal
+          isVisible={isEditModalVisible}
+          onClose={() => {
+            setIsEditModalVisible(false);
+            setSelectedList(null);
+          }}
+          onSave={updateList}
+          initialData={{
+            title: selectedList.title,
+            items: selectedList.items,
+            icon: selectedList.icon
+          }}
+          mode="edit"
+        />
+      )}
       
-      {/* Tab Bar */}
-      <View style={styles.tabBar}>
-        <TouchableOpacity 
-          style={styles.tabItem}
-          onPress={goToHome}
-        >
-          <Ionicons name="home-outline" size={24} color="#8B7355" />
-          <Text style={styles.tabLabel}>Home</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity style={[styles.tabItem, styles.activeTab]}>
-          <Ionicons name="bookmark" size={24} color="#5D4FB7" />
-          <Text style={[styles.tabLabel, styles.activeTabLabel]}>Saved Lists</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity style={styles.tabItem}>
-          <Ionicons name="checkmark-circle-outline" size={24} color="#8B7355" />
-          <Text style={styles.tabLabel}>Check</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity style={styles.tabItem}>
-          <Ionicons name="person-outline" size={24} color="#8B7355" />
-          <Text style={styles.tabLabel}>Profile</Text>
-        </TouchableOpacity>
-      </View>
+      <TabBar />
     </SafeAreaView>
   );
 }
@@ -244,24 +252,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#F5F5DC',
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 20,
     paddingVertical: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E8DBC5',
-    backgroundColor: '#F8F4E3',
+    paddingHorizontal: 20,
+    backgroundColor: '#E8DBC5',
+    alignItems: 'center',
   },
   headerTitle: {
     fontSize: 20,
     fontWeight: 'bold',
     color: '#4A3C2C',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   emptyContainer: {
     flex: 1,
@@ -280,23 +279,37 @@ const styles = StyleSheet.create({
     color: '#8B7355',
     textAlign: 'center',
     marginTop: 10,
+    marginBottom: 20,
+  },
+  createButton: {
+    backgroundColor: '#5D4FB7',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    marginTop: 10,
+  },
+  createButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
   listContainer: {
-    padding: 16,
+    padding: 20,
   },
   listCard: {
     backgroundColor: '#F8F4E3',
     borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
+    marginBottom: 15,
     borderWidth: 1,
     borderColor: '#E8DBC5',
+    overflow: 'hidden',
   },
   listHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    padding: 15,
+    paddingBottom: 10,
   },
   listTitleContainer: {
     flexDirection: 'row',
@@ -326,7 +339,8 @@ const styles = StyleSheet.create({
   listDetails: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    paddingHorizontal: 15,
+    paddingBottom: 12,
   },
   listSubtitle: {
     fontSize: 14,
@@ -340,41 +354,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
+    paddingVertical: 12,
     borderTopWidth: 1,
     borderTopColor: '#E8DBC5',
-    marginTop: 8,
   },
   viewButtonText: {
     fontSize: 14,
     fontWeight: '600',
     color: '#5D4FB7',
     marginRight: 4,
-  },
-  tabBar: {
-    flexDirection: 'row',
-    borderTopWidth: 1,
-    borderTopColor: '#E8DBC5',
-    paddingVertical: 10,
-    backgroundColor: '#F8F4E3',
-  },
-  tabItem: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  activeTab: {
-    borderTopWidth: 2,
-    borderTopColor: '#5D4FB7',
-    marginTop: -1,
-  },
-  tabLabel: {
-    fontSize: 12,
-    marginTop: 4,
-    color: '#8B7355',
-  },
-  activeTabLabel: {
-    color: '#5D4FB7',
-    fontWeight: '600',
   },
 });

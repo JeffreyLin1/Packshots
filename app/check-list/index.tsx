@@ -7,21 +7,43 @@ import {
   FlatList,
   SafeAreaView,
   Alert,
-  ActivityIndicator
+  ActivityIndicator,
+  TextInput
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import { PackingList } from '../../components/ListModal';
+import TabBar from '../../components/TabBar';
 
 export default function CheckListSelectionScreen() {
   const [lists, setLists] = useState<PackingList[]>([]);
+  const [filteredLists, setFilteredLists] = useState<PackingList[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Load all saved lists on component mount
   useEffect(() => {
     loadSavedLists();
   }, []);
+
+  // Filter lists when search query changes
+  useEffect(() => {
+    if (searchQuery.trim() === '') {
+      setFilteredLists(lists);
+    } else {
+      const query = searchQuery.toLowerCase();
+      const filtered = lists.filter(list => 
+        list.title.toLowerCase().includes(query) || 
+        list.items.some(item => 
+          typeof item === 'string' 
+            ? item.toLowerCase().includes(query)
+            : item.name?.toLowerCase().includes(query)
+        )
+      );
+      setFilteredLists(filtered);
+    }
+  }, [searchQuery, lists]);
 
   // Load lists from AsyncStorage
   const loadSavedLists = async () => {
@@ -33,8 +55,10 @@ export default function CheckListSelectionScreen() {
         // Sort by most recent first
         savedLists.sort((a, b) => b.createdAt - a.createdAt);
         setLists(savedLists);
+        setFilteredLists(savedLists);
       } else {
         setLists([]);
+        setFilteredLists([]);
       }
     } catch (error) {
       console.error('Failed to load lists:', error);
@@ -42,16 +66,6 @@ export default function CheckListSelectionScreen() {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  // Navigate to home screen
-  const goToHome = () => {
-    router.push('/');
-  };
-
-  // Navigate to saved lists screen
-  const goToSavedLists = () => {
-    router.push('/saved-lists');
   };
 
   // Navigate to check list screen
@@ -62,18 +76,36 @@ export default function CheckListSelectionScreen() {
     });
   };
 
+  // Navigate to home screen
+  const goToHome = () => {
+    router.push('/');
+  };
+
+  // Clear search query
+  const clearSearch = () => {
+    setSearchQuery('');
+  };
+
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Manual Check</Text>
-        <TouchableOpacity style={styles.backButton} onPress={goToHome}>
-          <Ionicons name="arrow-back" size={24} color="#4A3C2C" />
-        </TouchableOpacity>
-      </View>
-      
-      <View style={styles.contentContainer}>
-        <Text style={styles.subtitle}>Select a list to check</Text>
-        
+      <View style={styles.content}>
+        {/* Search Bar */}
+        <View style={styles.searchContainer}>
+          <Ionicons name="search" size={20} color="#8B7355" style={styles.searchIcon} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search lists..."
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholderTextColor="#8B7355"
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={clearSearch}>
+              <Ionicons name="close-circle" size={20} color="#8B7355" />
+            </TouchableOpacity>
+          )}
+        </View>
+
         {isLoading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#5D4FB7" />
@@ -82,18 +114,30 @@ export default function CheckListSelectionScreen() {
         ) : lists.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Ionicons name="list-outline" size={48} color="#8B7355" />
-            <Text style={styles.emptyText}>You don't have any lists yet</Text>
-            <Text style={styles.emptySubtext}>Create a list first to use the manual check feature</Text>
+            <Text style={styles.emptyText}>No saved lists yet</Text>
+            <Text style={styles.emptySubtext}>Create a list to get started</Text>
             <TouchableOpacity 
               style={styles.createButton}
               onPress={goToHome}
             >
-              <Text style={styles.createButtonText}>Go to Home</Text>
+              <Text style={styles.createButtonText}>Create a List</Text>
+            </TouchableOpacity>
+          </View>
+        ) : filteredLists.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Ionicons name="search-outline" size={48} color="#8B7355" />
+            <Text style={styles.emptyText}>No matching lists</Text>
+            <Text style={styles.emptySubtext}>Try a different search term</Text>
+            <TouchableOpacity 
+              style={styles.createButton}
+              onPress={clearSearch}
+            >
+              <Text style={styles.createButtonText}>Clear Search</Text>
             </TouchableOpacity>
           </View>
         ) : (
           <FlatList
-            data={lists}
+            data={filteredLists}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => (
               <TouchableOpacity 
@@ -101,52 +145,22 @@ export default function CheckListSelectionScreen() {
                 onPress={() => goToCheckList(item)}
               >
                 <View style={styles.listIconContainer}>
-                  <Ionicons name={item.icon as any} size={24} color="#5D4FB7" />
+                  <Ionicons name={item.icon || "list"} size={20} color="#5D4FB7" />
                 </View>
                 <View style={styles.listContent}>
                   <Text style={styles.listTitle}>{item.title}</Text>
-                  <Text style={styles.listSubtitle}>
-                    {item.items.length} items • {item.items.filter(i => i.packed).length} packed
-                  </Text>
+                  <Text style={styles.listSubtitle}>{item.items.length} items</Text>
                 </View>
                 <Ionicons name="chevron-forward" size={20} color="#8B7355" />
               </TouchableOpacity>
             )}
             contentContainerStyle={styles.listContainer}
+            showsVerticalScrollIndicator={false}
           />
         )}
       </View>
       
-      {/* Tab Bar */}
-      <View style={styles.tabBar}>
-        <TouchableOpacity 
-          style={styles.tabItem}
-          onPress={goToHome}
-        >
-          <Ionicons name="home-outline" size={24} color="#8B7355" />
-          <Text style={styles.tabLabel}>Home</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={styles.tabItem}
-          onPress={goToSavedLists}
-        >
-          <Ionicons name="bookmark-outline" size={24} color="#8B7355" />
-          <Text style={styles.tabLabel}>Saved Lists</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={[styles.tabItem, styles.activeTab]}
-        >
-          <Ionicons name="checkmark-circle" size={24} color="#5D4FB7" />
-          <Text style={[styles.tabLabel, styles.activeTabLabel]}>Check</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity style={styles.tabItem}>
-          <Ionicons name="person-outline" size={24} color="#8B7355" />
-          <Text style={styles.tabLabel}>Profile</Text>
-        </TouchableOpacity>
-      </View>
+      <TabBar />
     </SafeAreaView>
   );
 }
@@ -156,41 +170,28 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F5F5DC',
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 15,
-    paddingHorizontal: 20,
-    backgroundColor: '#E8DBC5',
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#4A3C2C',
-    flex: 1,
-    textAlign: 'center',
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#F8F4E3',
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'absolute',
-    left: 20,
-    zIndex: 10,
-  },
-  contentContainer: {
+  content: {
     flex: 1,
     padding: 20,
+    paddingTop: 30,
   },
-  subtitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#4A3C2C',
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    paddingHorizontal: 15,
     marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#E8DBC5',
+  },
+  searchIcon: {
+    marginRight: 10,
+  },
+  searchInput: {
+    flex: 1,
+    height: 50,
+    color: '#4A3C2C',
   },
   loadingContainer: {
     flex: 1,
@@ -198,9 +199,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   loadingText: {
+    marginTop: 10,
     fontSize: 16,
     color: '#8B7355',
-    marginTop: 10,
   },
   emptyContainer: {
     flex: 1,
@@ -267,31 +268,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#8B7355',
     marginTop: 4,
-  },
-  tabBar: {
-    flexDirection: 'row',
-    borderTopWidth: 1,
-    borderTopColor: '#E8DBC5',
-    paddingVertical: 10,
-    backgroundColor: '#F8F4E3',
-  },
-  tabItem: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  activeTab: {
-    borderTopWidth: 2,
-    borderTopColor: '#5D4FB7',
-    marginTop: -1,
-  },
-  tabLabel: {
-    fontSize: 12,
-    marginTop: 4,
-    color: '#8B7355',
-  },
-  activeTabLabel: {
-    color: '#5D4FB7',
-    fontWeight: '600',
   },
 });

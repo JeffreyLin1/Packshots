@@ -70,13 +70,9 @@ serve(async (req) => {
             content: imageBase64.replace(/^data:image\/\w+;base64,/, '')
           },
           features: [
-            {
-              type: 'LABEL_DETECTION',
-              maxResults: 15
-            },
-            {
-              type: 'OBJECT_LOCALIZATION',
-              maxResults: 15
+            { 
+              type: 'OBJECT_LOCALIZATION', 
+              maxResults: 25
             }
           ]
         }
@@ -112,34 +108,36 @@ serve(async (req) => {
     // Process and return the results
     let detectedObjects = [];
     
-    if (data.responses && data.responses[0]) {
-      // Get label annotations
-      if (data.responses[0].labelAnnotations) {
-        detectedObjects = data.responses[0].labelAnnotations.map(label => ({
-          name: label.description,
-          confidence: label.score
-        }));
-      }
+    if (data.responses && data.responses[0] && data.responses[0].localizedObjectAnnotations) {
+      detectedObjects = data.responses[0].localizedObjectAnnotations.map(obj => ({
+        name: obj.name,
+        confidence: obj.score
+      }));
       
-      // Add object localization results if available
-      if (data.responses[0].localizedObjectAnnotations) {
-        const objectAnnotations = data.responses[0].localizedObjectAnnotations.map(obj => ({
-          name: obj.name,
-          confidence: obj.score
-        }));
-        
-        // Merge and remove duplicates
-        const allObjects = [...detectedObjects, ...objectAnnotations];
-        const uniqueObjects = Array.from(new Map(
-          allObjects.map(item => [item.name.toLowerCase(), item])
-        ).values());
-        
-        detectedObjects = uniqueObjects;
-      }
-    }
+      // Filter out generic/broad terms
+      const genericTerms = [
+        'plastic', 'metal', 'cylinder', 'material', 'product', 'liquid', 'fluid',
+        'container', 'device', 'object', 'item', 'gadget', 'accessory', 'silver',
+        'black', 'white', 'personal care', 'carbon fibers', 'bottled and jarred packaged goods',
+        'hardware', 'electronic device', 'technology', 'electronics', 'household hardware'
+      ];
 
-    // Sort by confidence
-    detectedObjects.sort((a, b) => b.confidence - a.confidence);
+      detectedObjects = detectedObjects.filter(obj => 
+        !genericTerms.some(term => 
+          obj.name.toLowerCase().includes(term.toLowerCase())
+        )
+      );
+
+      // Filter by minimum confidence
+      const MIN_CONFIDENCE = 0.5;  // Slightly lower threshold for object localization
+      detectedObjects = detectedObjects.filter(obj => obj.confidence >= MIN_CONFIDENCE);
+
+      // Sort by confidence
+      detectedObjects.sort((a, b) => b.confidence - a.confidence);
+
+      // Limit to top 10 results
+      detectedObjects = detectedObjects.slice(0, 10);
+    }
 
     return new Response(
       JSON.stringify({ objects: detectedObjects }),

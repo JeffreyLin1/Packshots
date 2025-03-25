@@ -13,6 +13,8 @@ import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import ListModal, { PackingList } from '../components/ListModal';
+import TabBar from '../components/TabBar';
+import { useAuth } from '../lib/AuthContext';
 
 export default function App() {
   // Animation states for mascot text
@@ -98,7 +100,9 @@ export default function App() {
   const goToSavedLists = () => {
     router.push('/saved-lists');
   };
-  
+
+  const { user } = useAuth();
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -167,6 +171,16 @@ export default function App() {
               <Text style={styles.optionLabel}>Saved Lists</Text>
             </TouchableOpacity>
           </View>
+
+          {!user && (
+            <TouchableOpacity 
+              style={styles.signInButton}
+              onPress={() => router.push('/auth/sign-in')}
+            >
+              <Ionicons name="log-in-outline" size={20} color="#FFFFFF" />
+              <Text style={styles.signInButtonText}>Sign In</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </ScrollView>
       
@@ -177,30 +191,8 @@ export default function App() {
         onSave={saveNewList}
       />
       
-      <View style={styles.tabBar}>
-        <TouchableOpacity style={[styles.tabItem, styles.activeTab]}>
-          <Ionicons name="home" size={24} color="#5D4FB7" />
-          <Text style={[styles.tabLabel, styles.activeTabLabel]}>Home</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={styles.tabItem}
-          onPress={goToSavedLists}
-        >
-          <Ionicons name="bookmark-outline" size={24} color="#8B7355" />
-          <Text style={styles.tabLabel}>Saved Lists</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity style={styles.tabItem}>
-          <Ionicons name="checkmark-circle-outline" size={24} color="#8B7355" />
-          <Text style={styles.tabLabel}>Check</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity style={styles.tabItem}>
-          <Ionicons name="person-outline" size={24} color="#8B7355" />
-          <Text style={styles.tabLabel}>Profile</Text>
-        </TouchableOpacity>
-      </View>
+      {/* Use the TabBar component */}
+      <TabBar />
     </SafeAreaView>
   );
 }
@@ -385,5 +377,22 @@ const styles = StyleSheet.create({
   activeTabLabel: {
     color: '#5D4FB7',
     fontWeight: '600',
+  },
+  signInButton: {
+    backgroundColor: '#5D4FB7',
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    width: '100%',
+    marginTop: 10,
+  },
+  signInButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginLeft: 8,
   },
 });
