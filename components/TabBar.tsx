@@ -39,7 +39,7 @@ export default function TabBar() {
           size={24} 
           color={isActive('/saved-lists') ? "#5D4FB7" : "#8B7355"} 
         />
-        <Text style={[styles.tabLabel, isActive('/saved-lists') && styles.activeTabLabel]}>Saved Lists</Text>
+        <Text style={[styles.tabLabel, isActive('/saved-lists') && styles.activeTabLabel]}>My Lists</Text>
       </TouchableOpacity>
       
       <TouchableOpacity 

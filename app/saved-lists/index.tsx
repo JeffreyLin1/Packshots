@@ -137,7 +137,7 @@ export default function SavedListsScreen() {
   // View a list
   const viewList = (list: PackingList) => {
     router.push({
-      pathname: '/check-list/[id]',
+      pathname: '/list-details/[id]',
       params: { id: list.id }
     });
   };

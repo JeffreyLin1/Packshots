@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   StyleSheet, 
   Text, 
   View, 
   FlatList, 
-  TouchableOpacity 
+  TouchableOpacity,
+  Switch
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -15,117 +16,151 @@ export type DetectedObject = {
 
 type ObjectsListProps = {
   objects: DetectedObject[];
-  onCreateList?: (objects: string[]) => void;
+  onCreateList: (selectedItems: string[]) => void;
+  listMode?: 'create' | 'update';
 };
 
-const ObjectsList: React.FC<ObjectsListProps> = ({ objects, onCreateList }) => {
-  const handleCreateList = () => {
-    if (onCreateList) {
-      const objectNames = objects.map(obj => obj.name);
-      onCreateList(objectNames);
-    }
+export default function ObjectsList({ objects, onCreateList, listMode = 'create' }: ObjectsListProps) {
+  const [selectedObjects, setSelectedObjects] = useState<{ [key: string]: boolean }>(
+    objects.reduce((acc, obj) => {
+      acc[obj.name] = true;
+      return acc;
+    }, {} as { [key: string]: boolean })
+  );
+
+  const toggleSelection = (name: string) => {
+    setSelectedObjects(prev => ({
+      ...prev,
+      [name]: !prev[name]
+    }));
   };
 
-  const renderItem = ({ item }: { item: DetectedObject }) => (
-    <View style={styles.objectItem}>
-      <Ionicons name="checkmark-circle-outline" size={24} color="#5D4FB7" />
-      <Text style={styles.objectName}>{item.name}</Text>
-      <Text style={styles.objectConfidence}>
-        {Math.round(item.confidence * 100)}%
-      </Text>
-    </View>
-  );
+  const handleCreateList = () => {
+    const selectedItems = objects
+      .filter(obj => selectedObjects[obj.name])
+      .map(obj => obj.name);
+    
+    if (selectedItems.length === 0) {
+      return;
+    }
+    
+    onCreateList(selectedItems);
+  };
+
+  const getSelectedCount = () => {
+    return objects.filter(obj => selectedObjects[obj.name]).length;
+  };
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Detected Items</Text>
+      <Text style={styles.subtitle}>
+        {objects.length} item{objects.length !== 1 ? 's' : ''} detected
+      </Text>
       
-      {objects.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>No items detected</Text>
-        </View>
-      ) : (
-        <>
-          <FlatList
-            data={objects}
-            renderItem={renderItem}
-            keyExtractor={(item, index) => `${item.name}-${index}`}
-            style={styles.list}
-          />
-          
-          <TouchableOpacity 
-            style={styles.createListButton}
-            onPress={handleCreateList}
-          >
-            <Ionicons name="list" size={20} color="#FFFFFF" />
-            <Text style={styles.createListText}>Create Packing List</Text>
-          </TouchableOpacity>
-        </>
-      )}
+      <FlatList
+        data={objects}
+        keyExtractor={(item, index) => `${item.name}-${index}`}
+        renderItem={({ item }) => (
+          <View style={styles.itemRow}>
+            <View style={styles.itemInfo}>
+              <Text style={styles.itemName}>{item.name}</Text>
+              <Text style={styles.itemConfidence}>
+                {Math.round(item.confidence * 100)}% confidence
+              </Text>
+            </View>
+            <Switch
+              value={selectedObjects[item.name]}
+              onValueChange={() => toggleSelection(item.name)}
+              trackColor={{ false: '#E8DBC5', true: '#D2B48C' }}
+              thumbColor={selectedObjects[item.name] ? '#5D4FB7' : '#F5F5DC'}
+            />
+          </View>
+        )}
+        style={styles.list}
+        contentContainerStyle={styles.listContent}
+      />
+      
+      <TouchableOpacity 
+        style={styles.createButton}
+        onPress={handleCreateList}
+        disabled={getSelectedCount() === 0}
+      >
+        <Ionicons 
+          name={listMode === 'create' ? "add-circle" : "save"} 
+          size={24} 
+          color="#FFFFFF" 
+        />
+        <Text style={styles.createButtonText}>
+          {listMode === 'create' 
+            ? `Create List (${getSelectedCount()})` 
+            : `Add to List (${getSelectedCount()})`}
+        </Text>
+      </TouchableOpacity>
     </View>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5DC',
-    padding: 16,
+    padding: 20,
   },
   title: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: 'bold',
     color: '#4A3C2C',
-    marginBottom: 16,
+    marginBottom: 5,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: '#8B7355',
+    marginBottom: 20,
   },
   list: {
     flex: 1,
   },
-  objectItem: {
+  listContent: {
+    paddingBottom: 20,
+  },
+  itemRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F8F4E3',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 8,
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 15,
+    backgroundColor: '#FFF8E7',
+    marginBottom: 10,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: '#E8DBC5',
   },
-  objectName: {
+  itemInfo: {
     flex: 1,
-    fontSize: 16,
-    color: '#4A3C2C',
-    marginLeft: 12,
   },
-  objectConfidence: {
-    fontSize: 14,
-    color: '#8B7355',
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  emptyText: {
-    fontSize: 16,
-    color: '#8B7355',
-    textAlign: 'center',
-  },
-  createListButton: {
-    backgroundColor: '#5D4FB7',
-    borderRadius: 8,
-    padding: 16,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 16,
-  },
-  createListText: {
-    color: '#FFFFFF',
+  itemName: {
     fontSize: 16,
     fontWeight: '600',
+    color: '#4A3C2C',
+  },
+  itemConfidence: {
+    fontSize: 14,
+    color: '#8B7355',
+    marginTop: 2,
+  },
+  createButton: {
+    backgroundColor: '#5D4FB7',
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 15,
+    marginTop: 10,
+  },
+  createButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
     marginLeft: 8,
   },
 });
-
-export default ObjectsList;

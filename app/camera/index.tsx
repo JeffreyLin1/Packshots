@@ -7,30 +7,80 @@ import {
   SafeAreaView,
   Alert,
   Image,
-  ActivityIndicator
+  ActivityIndicator,
+  FlatList,
+  TextInput
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { CameraView, Camera } from 'expo-camera';
 import { supabase } from '../../lib/supabase';
 import * as FileSystem from 'expo-file-system';
-import ObjectsList, { DetectedObject } from '../../components/ObjectsList';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PackingList } from '../../components/ListModal';
+import { useAuth } from '../../lib/AuthContext';
+
+// Define the DetectedObject type
+type DetectedObject = {
+  name: string;
+  score?: number;
+  confidence?: number;
+  selected?: boolean;
+};
 
 export default function CameraScreen() {
+  const { listId } = useLocalSearchParams<{ listId: string }>();
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [photo, setPhoto] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [detectedObjects, setDetectedObjects] = useState<DetectedObject[]>([]);
+  const [list, setList] = useState<PackingList | null>(null);
+  const [comparisonResults, setComparisonResults] = useState<{
+    found: string[];
+    missing: string[];
+  }>({ found: [], missing: [] });
+  const [showResults, setShowResults] = useState(false);
   const cameraRef = useRef<CameraView>(null);
+  const [editableItems, setEditableItems] = useState<DetectedObject[]>([]);
+  const [isEditing, setIsEditing] = useState(false);
+  const { user } = useAuth();
 
   useEffect(() => {
+    // Check if user is logged in
+    if (!user) {
+      Alert.alert(
+        'Authentication Required',
+        'You need to be signed in to use this feature.',
+        [{ text: 'OK', onPress: () => router.back() }]
+      );
+      return;
+    }
+
+    // Request camera permissions
     (async () => {
       const { status } = await Camera.requestCameraPermissionsAsync();
       setHasPermission(status === 'granted');
     })();
-  }, []);
+    
+    if (listId) {
+      loadList(listId);
+    }
+  }, [listId, user]);
+
+  const loadList = async (id: string) => {
+    try {
+      const savedListsJson = await AsyncStorage.getItem('packingLists');
+      if (savedListsJson) {
+        const savedLists = JSON.parse(savedListsJson) as PackingList[];
+        const foundList = savedLists.find(list => list.id === id);
+        if (foundList) {
+          setList(foundList);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load list:', error);
+    }
+  };
 
   const takePhoto = async () => {
     if (cameraRef.current) {
@@ -39,6 +89,7 @@ export default function CameraScreen() {
         if (photo && photo.uri) {
           setPhoto(photo.uri);
           setDetectedObjects([]);
+          setShowResults(false);
         }
       } catch (error) {
         console.error('Failed to take photo:', error);
@@ -48,7 +99,7 @@ export default function CameraScreen() {
   };
 
   const processImage = async () => {
-    if (!photo) return;
+    if (!photo || !list) return;
     
     setIsProcessing(true);
     
@@ -67,8 +118,26 @@ export default function CameraScreen() {
         throw new Error(error.message);
       }
       
-      // Update state with detected objects
-      setDetectedObjects(data.objects || []);
+      console.log('Vision API response:', JSON.stringify(data));
+      
+      // Extract objects from the response
+      let detectedItems: DetectedObject[] = [];
+      
+      if (data.objects && Array.isArray(data.objects)) {
+        detectedItems = data.objects;
+      } else if (data.labels && Array.isArray(data.labels)) {
+        detectedItems = data.labels;
+      } else if (Array.isArray(data)) {
+        detectedItems = data;
+      }
+      
+      console.log('Processed detected items:', JSON.stringify(detectedItems));
+      
+      // Make sure we're setting the detected objects correctly
+      setDetectedObjects(detectedItems);
+      
+      // Compare detected objects with list items
+      compareWithList(detectedItems);
     } catch (error) {
       console.error('Failed to process image:', error);
       Alert.alert('Error', 'Failed to analyze the image. Please try again.');
@@ -78,56 +147,186 @@ export default function CameraScreen() {
     }
   };
 
-  const createPackingList = async (items: string[]) => {
+  const compareWithList = (detectedItems: DetectedObject[]) => {
+    if (!list) return;
+    
+    console.log('Comparing with list:', list.items);
+    
+    // Get list item names (lowercase for case-insensitive comparison)
+    const listItemNames = list.items.map(item => 
+      typeof item === 'string' ? item.toLowerCase() : item.name.toLowerCase()
+    );
+    
+    // Get detected item names (lowercase) with high confidence
+    const highConfidenceItems = detectedItems
+      .filter(item => {
+        // Use either score or confidence property, whichever exists
+        const confidenceValue = item.score || item.confidence || 0;
+        return confidenceValue >= 0.5; // Lower threshold to 50% confidence
+      })
+      .map(item => ({
+        name: item.name,
+        nameLower: item.name.toLowerCase(),
+        score: item.score || item.confidence || 0.5,
+        inList: false
+      }));
+    
+    console.log('High confidence items:', highConfidenceItems);
+    
+    // Mark detected items that are in the list
+    highConfidenceItems.forEach(item => {
+      item.inList = listItemNames.some(listItem => 
+        listItem.includes(item.nameLower) || item.nameLower.includes(listItem)
+      );
+    });
+    
+    // Find items that are in the list but not detected in the photo
+    const missingItems = listItemNames.filter(listItem => 
+      !highConfidenceItems.some(detected => 
+        detected.nameLower.includes(listItem) || listItem.includes(detected.nameLower)
+      )
+    );
+    
+    // Get original case for missing items
+    const missingItemsOriginalCase = list.items
+      .filter(item => {
+        const itemName = typeof item === 'string' ? item : item.name;
+        return missingItems.includes(itemName.toLowerCase());
+      })
+      .map(item => typeof item === 'string' ? item : item.name);
+    
+    // Update state with results
+    setDetectedObjects(detectedItems);
+    // Initialize editable items with detected objects
+    setEditableItems(detectedItems.map(item => ({
+      name: item.name,
+      score: item.score || item.confidence || 0.5,
+      selected: true // Default to selected
+    })));
+    setComparisonResults({
+      found: highConfidenceItems.map(item => item.name),
+      missing: missingItemsOriginalCase
+    });
+    setShowResults(true);
+    // Start in edit mode by default
+    setIsEditing(true);
+  };
+
+  const addNewItem = () => {
+    // Create a new item with a placeholder name
+    const newItem = {
+      name: "New Item",
+      score: 1.0,
+      selected: true
+    };
+    
+    setEditableItems([...editableItems, newItem]);
+    updateMissingItems();
+  };
+
+  const updateItemName = (index: number, newName: string) => {
+    const updatedItems = [...editableItems];
+    updatedItems[index] = {
+      ...updatedItems[index],
+      name: newName
+    };
+    setEditableItems(updatedItems);
+    updateMissingItems();
+  };
+
+  const toggleItemSelection = (index: number) => {
+    const updatedItems = [...editableItems];
+    updatedItems[index] = {
+      ...updatedItems[index],
+      selected: !updatedItems[index].selected
+    };
+    setEditableItems(updatedItems);
+    updateMissingItems();
+  };
+
+  const removeItem = (index: number) => {
+    const updatedItems = [...editableItems];
+    updatedItems.splice(index, 1);
+    setEditableItems(updatedItems);
+    updateMissingItems();
+  };
+
+  const updateListWithFoundItems = async () => {
+    if (!list || !listId) return;
+    
     try {
-      // Create new list object
-      const newList: PackingList = {
-        id: Math.random().toString(36).substring(2, 9),
-        title: `Photo List ${new Date().toLocaleDateString()}`,
-        items: items.map(name => ({
-          id: Math.random().toString(36).substring(2, 9),
-          name,
-          packed: false
-        })),
-        icon: 'camera-outline',
-        createdAt: Date.now()
-      };
+      // Get selected items
+      const selectedItems = editableItems
+        .filter(item => item.selected)
+        .map(item => item.name);
       
-      // Get existing lists or initialize empty array
-      const existingListsJson = await AsyncStorage.getItem('packingLists');
-      const existingLists: PackingList[] = existingListsJson 
-        ? JSON.parse(existingListsJson) 
-        : [];
+      // Get all lists
+      const savedListsJson = await AsyncStorage.getItem('packingLists');
+      if (!savedListsJson) return;
       
-      // Add new list and save back to storage
-      const updatedLists = [newList, ...existingLists];
+      const savedLists = JSON.parse(savedListsJson) as PackingList[];
+      
+      // Find and update the current list
+      const updatedLists = savedLists.map(savedList => {
+        if (savedList.id === listId) {
+          // Update packed status for selected items
+          const updatedItems = savedList.items.map(item => {
+            const itemName = typeof item === 'string' ? item : item.name;
+            if (selectedItems.some(selected => 
+              selected.toLowerCase().includes(itemName.toLowerCase()) || 
+              itemName.toLowerCase().includes(selected.toLowerCase())
+            )) {
+              return typeof item === 'string' 
+                ? { id: Math.random().toString(36).substring(2, 9), name: item, packed: true }
+                : { ...item, packed: true };
+            }
+            return item;
+          });
+          
+          return { ...savedList, items: updatedItems };
+        }
+        return savedList;
+      });
+      
+      // Save updated lists
       await AsyncStorage.setItem('packingLists', JSON.stringify(updatedLists));
       
       Alert.alert(
         'Success', 
-        'Your packing list has been created!',
+        'Your packing list has been updated!',
         [
           {
             text: 'View List',
-            onPress: () => router.push({
-              pathname: '/check-list/[id]',
-              params: { id: newList.id }
-            })
+            onPress: () => goToListDetails(listId)
           },
           {
-            text: 'Go Home',
-            onPress: goToHome
+            text: 'Take Another Photo',
+            onPress: () => {
+              setPhoto(null);
+              setShowResults(false);
+            }
           }
         ]
       );
     } catch (error) {
-      console.error('Failed to create list:', error);
-      Alert.alert('Error', 'Failed to create your list. Please try again.');
+      console.error('Failed to update list:', error);
+      Alert.alert('Error', 'Failed to update your list. Please try again.');
     }
   };
 
-  const goToHome = () => {
-    router.replace('/');
+  const goToListDetails = (id: string) => {
+    router.push({
+      pathname: '/list-details/[id]',
+      params: { id }
+    });
+  };
+
+  const goBack = () => {
+    if (listId) {
+      goToListDetails(listId);
+    } else {
+      router.back();
+    }
   };
 
   // If permission is not granted yet
@@ -153,7 +352,7 @@ export default function CameraScreen() {
           </Text>
           <TouchableOpacity 
             style={styles.backButton}
-            onPress={goToHome}
+            onPress={goBack}
           >
             <Text style={styles.backButtonText}>Go Back</Text>
           </TouchableOpacity>
@@ -179,11 +378,125 @@ export default function CameraScreen() {
             <ActivityIndicator size="large" color="#5D4FB7" style={styles.loader} />
             <Text style={styles.processingText}>Analyzing image...</Text>
           </View>
-        ) : detectedObjects.length > 0 ? (
-          <ObjectsList 
-            objects={detectedObjects} 
-            onCreateList={createPackingList}
-          />
+        ) : showResults ? (
+          <View style={styles.resultsContainer}>
+            <Image source={{ uri: photo }} style={styles.previewImageSmall} />
+            
+            <Text style={styles.resultsTitle}>
+              Items Detected in Photo:
+              <TouchableOpacity 
+                onPress={() => setIsEditing(!isEditing)}
+                style={styles.editButton}
+              >
+                <Text style={styles.editButtonText}>
+                  {isEditing ? "Done" : "Edit"}
+                </Text>
+              </TouchableOpacity>
+            </Text>
+            
+            {editableItems && editableItems.length > 0 ? (
+              <View style={styles.itemsContainer}>
+                <FlatList
+                  data={editableItems}
+                  keyExtractor={(item, index) => `editable-${index}`}
+                  renderItem={({ item, index }) => {
+                    const isInList = list?.items.some(listItem => {
+                      const itemName = typeof listItem === 'string' ? listItem : listItem.name;
+                      return itemName.toLowerCase().includes(item.name.toLowerCase()) || 
+                             item.name.toLowerCase().includes(itemName.toLowerCase());
+                    });
+                    
+                    return (
+                      <View style={styles.itemRow}>
+                        {isEditing ? (
+                          <>
+                            <TouchableOpacity onPress={() => toggleItemSelection(index)}>
+                              <Ionicons 
+                                name={item.selected ? "checkbox" : "square-outline"} 
+                                size={24} 
+                                color="#5D4FB7" 
+                              />
+                            </TouchableOpacity>
+                            <TextInput
+                              style={styles.itemTextInput}
+                              value={item.name}
+                              onChangeText={(text) => updateItemName(index, text)}
+                            />
+                            <TouchableOpacity onPress={() => removeItem(index)}>
+                              <Ionicons name="trash-outline" size={24} color="#F44336" />
+                            </TouchableOpacity>
+                          </>
+                        ) : (
+                          <>
+                            <Ionicons 
+                              name={isInList ? "checkmark-circle" : "add-circle-outline"} 
+                              size={24} 
+                              color={isInList ? "#4CAF50" : "#5D4FB7"} 
+                            />
+                            <Text style={styles.itemText}>{item.name}</Text>
+                            <Text style={styles.itemScore}>{Math.round(item.score * 100)}%</Text>
+                          </>
+                        )}
+                      </View>
+                    );
+                  }}
+                  style={styles.itemsList}
+                  contentContainerStyle={{ paddingBottom: 10 }}
+                />
+                
+                {isEditing && (
+                  <TouchableOpacity 
+                    style={styles.addItemButton}
+                    onPress={addNewItem}
+                  >
+                    <Ionicons name="add-circle" size={24} color="#5D4FB7" />
+                    <Text style={styles.addItemText}>Add Item</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            ) : (
+              <Text style={styles.noItemsText}>No items detected in the photo.</Text>
+            )}
+            
+            {comparisonResults.missing && comparisonResults.missing.length > 0 && (
+              <>
+                <Text style={styles.resultsTitle}>Items Still Missing:</Text>
+                <View style={styles.itemsContainer}>
+                  <FlatList
+                    data={comparisonResults.missing}
+                    keyExtractor={(item, index) => `missing-${index}`}
+                    renderItem={({ item }) => (
+                      <View style={styles.itemRow}>
+                        <Ionicons name="close-circle" size={24} color="#F44336" />
+                        <Text style={styles.itemText}>{item}</Text>
+                      </View>
+                    )}
+                    style={styles.itemsList}
+                  />
+                </View>
+              </>
+            )}
+            
+            <View style={styles.resultsActions}>
+              <TouchableOpacity 
+                style={[styles.actionButton, styles.discardButton]}
+                onPress={() => setPhoto(null)}
+              >
+                <Ionicons name="camera" size={24} color="#FFFFFF" />
+                <Text style={styles.actionButtonText}>Take New Photo</Text>
+              </TouchableOpacity>
+              
+              {detectedObjects && detectedObjects.length > 0 && (
+                <TouchableOpacity 
+                  style={[styles.actionButton, styles.useButton]}
+                  onPress={updateListWithFoundItems}
+                >
+                  <Ionicons name="save" size={24} color="#FFFFFF" />
+                  <Text style={styles.actionButtonText}>Mark as Packed</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
         ) : (
           <View style={styles.previewContainer}>
             <Image source={{ uri: photo }} style={styles.previewImage} />
@@ -215,10 +528,12 @@ export default function CameraScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={goToHome} style={styles.backButton}>
+        <TouchableOpacity onPress={goBack} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#4A3C2C" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Take a Photo</Text>
+        <Text style={styles.headerTitle}>
+          {list ? `Check Items for ${list.title}` : 'Take a Photo'}
+        </Text>
       </View>
       
       <View style={styles.cameraContainer}>
@@ -367,13 +682,104 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 20,
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  processingText: {
+    fontSize: 18,
+    color: '#4A3C2C',
+    marginTop: 20,
   },
   loader: {
     marginVertical: 20,
   },
-  processingText: {
+  // New styles for results view
+  resultsContainer: {
+    flex: 1,
+    padding: 20,
+  },
+  resultsTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#4A3C2C',
+    marginTop: 10,
+    marginBottom: 10,
+  },
+  itemsContainer: {
+    backgroundColor: '#FFF8E7',
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 20,
+    maxHeight: 200,
+    minHeight: 100,
+  },
+  itemsList: {
+    flex: 1,
+    width: '100%',
+  },
+  itemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 5,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0EAD6',
+    width: '100%',
+  },
+  itemText: {
     fontSize: 16,
     color: '#4A3C2C',
-    textAlign: 'center',
+    marginLeft: 10,
+  },
+  itemScore: {
+    fontSize: 14,
+    color: '#8B7355',
+    marginLeft: 'auto',
+  },
+  noItemsText: {
+    fontSize: 16,
+    color: '#8B7355',
+    fontStyle: 'italic',
+    marginBottom: 20,
+  },
+  resultsActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 'auto',
+  },
+  editButton: {
+    marginLeft: 'auto',
+    backgroundColor: '#5D4FB7',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  editButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  itemTextInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#4A3C2C',
+    marginLeft: 10,
+    padding: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: '#D2B48C',
+  },
+  addItemButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    marginTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#F0EAD6',
+  },
+  addItemText: {
+    fontSize: 16,
+    color: '#5D4FB7',
+    marginLeft: 8,
+    fontWeight: '600',
   },
 });

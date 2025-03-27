@@ -13,18 +13,34 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router, useLocalSearchParams } from 'expo-router';
 import { PackingList, ListItem } from '../../components/ListModal';
+import Voice, { SpeechResultsEvent } from '@react-native-voice/voice';
 
 export default function CheckListScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [list, setList] = useState<PackingList | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [progress, setProgress] = useState(0);
+  const [isListening, setIsListening] = useState(false);
+  const [recognizedText, setRecognizedText] = useState('');
+  const [recentlyCheckedItems, setRecentlyCheckedItems] = useState<string[]>([]);
 
   // Load list data on component mount
   useEffect(() => {
     if (id) {
       loadList(id);
     }
+    
+    // Initialize voice recognition
+    Voice.onSpeechResults = onSpeechResults;
+    Voice.onSpeechError = onSpeechError;
+    Voice.onSpeechEnd = onSpeechEnd;
+    
+    return () => {
+      // Clean up voice recognition
+      Voice.destroy().then(() => {
+        console.log('Voice destroyed');
+      });
+    };
   }, [id]);
 
   // Calculate progress whenever items change
@@ -36,6 +52,96 @@ export default function CheckListScreen() {
       setProgress(0);
     }
   }, [list]);
+
+  // Process recognized text to check items
+  useEffect(() => {
+    if (recognizedText && list) {
+      processVoiceInput(recognizedText);
+    }
+  }, [recognizedText]);
+
+  // Voice recognition handlers
+  const onSpeechResults = (e: SpeechResultsEvent) => {
+    if (e.value && e.value.length > 0) {
+      setRecognizedText(e.value[0]);
+    }
+  };
+
+  const onSpeechError = (e: any) => {
+    console.error('Speech recognition error:', e);
+    stopListening();
+    Alert.alert('Voice Recognition Error', 'There was a problem with voice recognition. Please try again.');
+  };
+
+  const onSpeechEnd = () => {
+    stopListening();
+  };
+
+  // Start voice recognition
+  const startListening = async () => {
+    try {
+      await Voice.start('en-US');
+      setIsListening(true);
+      setRecentlyCheckedItems([]);
+    } catch (error) {
+      console.error('Error starting voice recognition:', error);
+      Alert.alert('Error', 'Could not start voice recognition. Please try again.');
+    }
+  };
+
+  // Stop voice recognition
+  const stopListening = async () => {
+    try {
+      await Voice.stop();
+      setIsListening(false);
+    } catch (error) {
+      console.error('Error stopping voice recognition:', error);
+    }
+  };
+
+  // Process voice input to check items
+  const processVoiceInput = async (text: string) => {
+    if (!list) return;
+    
+    const lowerText = text.toLowerCase();
+    const newCheckedItems: string[] = [];
+    
+    // Check if any item names are mentioned in the recognized text
+    const updatedItems = list.items.map(item => {
+      const itemName = item.name.toLowerCase();
+      
+      // Check if the item name is mentioned in the recognized text
+      if (lowerText.includes(itemName) && !item.packed) {
+        newCheckedItems.push(item.name);
+        return { ...item, packed: true };
+      }
+      return item;
+    });
+    
+    if (newCheckedItems.length > 0) {
+      // Update the list with newly checked items
+      const updatedList = {
+        ...list,
+        items: updatedItems
+      };
+      
+      // Update the list in storage
+      const savedListsJson = await AsyncStorage.getItem('packingLists');
+      if (savedListsJson) {
+        const savedLists = JSON.parse(savedListsJson) as PackingList[];
+        const updatedLists = savedLists.map(l => 
+          l.id === list.id ? updatedList : l
+        );
+        
+        await AsyncStorage.setItem('packingLists', JSON.stringify(updatedLists));
+        setList(updatedList);
+        setRecentlyCheckedItems(newCheckedItems);
+        
+        // Clear recognized text after processing
+        setRecognizedText('');
+      }
+    }
+  };
 
   // Load list from AsyncStorage
   const loadList = async (listId: string) => {
@@ -97,9 +203,16 @@ export default function CheckListScreen() {
     }
   };
 
-  // Go back to manual check screen
+  // Go back to list details screen
   const goBack = () => {
-    router.back();
+    if (id) {
+      router.push({
+        pathname: '/list-details/[id]',
+        params: { id }
+      });
+    } else {
+      router.back();
+    }
   };
 
   // Navigate to home screen
@@ -165,6 +278,34 @@ export default function CheckListScreen() {
           <Text style={styles.progressText}>{progress}% Packed</Text>
         </View>
         
+        {/* Voice recognition status */}
+        {isListening && (
+          <View style={styles.listeningContainer}>
+            <View style={styles.listeningIndicator}>
+              <Ionicons name="mic" size={24} color="#5D4FB7" />
+              <Text style={styles.listeningText}>Listening...</Text>
+            </View>
+            <TouchableOpacity 
+              style={styles.stopButton}
+              onPress={stopListening}
+            >
+              <Text style={styles.stopButtonText}>Stop</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        
+        {/* Recently checked items */}
+        {recentlyCheckedItems.length > 0 && (
+          <View style={styles.recentlyCheckedContainer}>
+            <Text style={styles.recentlyCheckedTitle}>Just checked:</Text>
+            {recentlyCheckedItems.map((item, index) => (
+              <Text key={index} style={styles.recentlyCheckedItem}>
+                • {item}
+              </Text>
+            ))}
+          </View>
+        )}
+        
         <FlatList
           data={list.items}
           keyExtractor={(item) => item.id}
@@ -191,6 +332,17 @@ export default function CheckListScreen() {
           )}
           contentContainerStyle={styles.listContainer}
         />
+        
+        {/* Voice recognition button */}
+        {!isListening && (
+          <TouchableOpacity 
+            style={styles.voiceButton}
+            onPress={startListening}
+          >
+            <Ionicons name="mic-outline" size={24} color="#FFFFFF" />
+            <Text style={styles.voiceButtonText}>Check Items with Voice</Text>
+          </TouchableOpacity>
+        )}
       </View>
       
       {/* Tab Bar */}
@@ -370,5 +522,71 @@ const styles = StyleSheet.create({
   activeTabLabel: {
     color: '#5D4FB7',
     fontWeight: '600',
+  },
+  // New styles for voice recognition
+  voiceButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#5D4FB7',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 25,
+    marginTop: 10,
+    marginBottom: 20,
+  },
+  voiceButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 10,
+  },
+  listeningContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F0EAD6',
+    padding: 15,
+    borderRadius: 12,
+    marginBottom: 15,
+  },
+  listeningIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  listeningText: {
+    fontSize: 16,
+    color: '#4A3C2C',
+    marginLeft: 10,
+    fontWeight: '500',
+  },
+  stopButton: {
+    backgroundColor: '#E57373',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 15,
+  },
+  stopButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  recentlyCheckedContainer: {
+    backgroundColor: '#F0EAD6',
+    padding: 15,
+    borderRadius: 12,
+    marginBottom: 15,
+  },
+  recentlyCheckedTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#4A3C2C',
+    marginBottom: 8,
+  },
+  recentlyCheckedItem: {
+    fontSize: 14,
+    color: '#5D4FB7',
+    marginBottom: 4,
+    fontWeight: '500',
   },
 });
