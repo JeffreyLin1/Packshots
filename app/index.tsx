@@ -178,20 +178,55 @@ export default function App() {
             </LinearGradient>
           </View>
           
-          <Text style={styles.sectionTitle}>Get Started</Text>
-          <View style={styles.optionsRow}>
-            <TouchableOpacity 
-              style={[styles.optionCard, styles.largeCard]}
-              onPress={goToSavedLists}
-            >
-              <View style={styles.iconContainer}>
-                <Ionicons name="bookmark-outline" size={28} color="#8B7355" />
-              </View>
-              <Text style={styles.optionLabel}>My Lists</Text>
-              <Text style={styles.optionDescription}>View and select from your saved packing lists</Text>
-            </TouchableOpacity>
-          </View>
+          {/* Recent Lists Section */}
+          <Text style={styles.sectionTitle}>Recent Lists</Text>
+          {recentLists.length > 0 ? (
+            <View style={styles.recentListsContainer}>
+              {recentLists.slice(0, 3).map(list => (
+                <TouchableOpacity 
+                  key={list.id}
+                  style={styles.recentListCard}
+                  onPress={() => viewList(list)}
+                >
+                  <View style={styles.recentListIconContainer}>
+                    <Ionicons 
+                      name={list.icon as any || "list-outline"} 
+                      size={24} 
+                      color="#8B7355" 
+                    />
+                  </View>
+                  <View style={styles.recentListInfo}>
+                    <Text style={styles.recentListTitle} numberOfLines={1}>
+                      {list.title}
+                    </Text>
+                    <Text style={styles.recentListSubtitle}>
+                      {list.items.length} items
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color="#8B7355" />
+                </TouchableOpacity>
+              ))}
+              
+              {recentLists.length > 3 && (
+                <TouchableOpacity 
+                  style={styles.viewAllButton}
+                  onPress={goToSavedLists}
+                >
+                  <Text style={styles.viewAllText}>View All Lists</Text>
+                  <Ionicons name="arrow-forward" size={16} color="#5D4FB7" />
+                </TouchableOpacity>
+              )}
+            </View>
+          ) : (
+            <View style={styles.emptyStateContainer}>
+              <Text style={styles.emptyStateText}>No lists yet</Text>
+              <Text style={styles.emptyStateSubtext}>
+                Create your first packing list to get started
+              </Text>
+            </View>
+          )}
           
+          {/* Create New List Button */}
           <View style={styles.optionsRow}>
             <TouchableOpacity 
               style={[styles.optionCard, styles.largeCard]}
@@ -204,49 +239,6 @@ export default function App() {
               <Text style={styles.optionDescription}>Build a custom packing list from scratch</Text>
             </TouchableOpacity>
           </View>
-          
-          {/* Recently Opened Lists Section */}
-          {recentLists.length > 0 && (
-            <>
-              <Text style={[styles.sectionTitle, {marginTop: 20}]}>Recently Used</Text>
-              <View style={styles.recentListsContainer}>
-                {recentLists.slice(0, 3).map(list => (
-                  <TouchableOpacity 
-                    key={list.id}
-                    style={styles.recentListCard}
-                    onPress={() => viewList(list)}
-                  >
-                    <View style={styles.recentListIconContainer}>
-                      <Ionicons 
-                        name={list.icon as any || "list-outline"} 
-                        size={24} 
-                        color="#8B7355" 
-                      />
-                    </View>
-                    <View style={styles.recentListInfo}>
-                      <Text style={styles.recentListTitle} numberOfLines={1}>
-                        {list.title}
-                      </Text>
-                      <Text style={styles.recentListSubtitle}>
-                        {list.items.length} items
-                      </Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={20} color="#8B7355" />
-                  </TouchableOpacity>
-                ))}
-                
-                {recentLists.length > 3 && (
-                  <TouchableOpacity 
-                    style={styles.viewAllButton}
-                    onPress={goToSavedLists}
-                  >
-                    <Text style={styles.viewAllText}>View All Lists</Text>
-                    <Ionicons name="arrow-forward" size={16} color="#5D4FB7" />
-                  </TouchableOpacity>
-                )}
-              </View>
-            </>
-          )}
 
           {!user && (
             <TouchableOpacity 
@@ -336,6 +328,7 @@ const styles = StyleSheet.create({
     color: '#4A3C2C',
   },
   optionsRow: {
+    marginTop: 20,
     marginBottom: 15,
   },
   optionCard: {
@@ -381,6 +374,17 @@ const styles = StyleSheet.create({
       },
     }),
   },
+  optionLabel: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#4A3C2C',
+    marginBottom: 8,
+  },
+  optionDescription: {
+    fontSize: 14,
+    color: '#8B7355',
+    lineHeight: 20,
+  },
   signInButton: {
     marginTop: 30,
     backgroundColor: '#8B7355',
@@ -408,7 +412,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginLeft: 8,
   },
-  // New styles for recently opened lists
+  // Styles for recent lists
   recentListsContainer: {
     marginBottom: 15,
   },
@@ -465,5 +469,34 @@ const styles = StyleSheet.create({
     color: '#5D4FB7',
     fontWeight: '600',
     marginRight: 5,
+  },
+  emptyStateContainer: {
+    backgroundColor: '#FFF8E7',
+    borderRadius: 16,
+    padding: 30,
+    alignItems: 'center',
+    marginBottom: 20,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#8B7355',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
+  },
+  emptyStateText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#4A3C2C',
+    marginBottom: 8,
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    color: '#8B7355',
+    textAlign: 'center',
   },
 });
