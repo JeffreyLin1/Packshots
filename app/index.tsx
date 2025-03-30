@@ -9,7 +9,8 @@ import {
   SafeAreaView,
   Alert,
   Platform,
-  FlatList
+  FlatList,
+  ActivityIndicator
 } from 'react-native';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -160,22 +161,28 @@ export default function App() {
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
         <View style={styles.contentContainer}>
           <View style={styles.heroSection}>
+            
             <LinearGradient
               colors={['#D2B48C', '#C8A982', '#B89F7A']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.heroCard}
             >
+              
               <View style={styles.heroTextContainer}>
                 <Text style={styles.heroSubtitle}>Let's take some</Text>
                 <Text style={styles.heroTitle}>PACKSHOTS!</Text>
+                
               </View>
-              <Image 
-                source={require('../assets/images/packie1.svg')} 
-                style={styles.mascotImage}
-                resizeMode="contain"
-              />
-            </LinearGradient>
+                <View style={styles.mascotPlaceholder} />
+
+                <Image 
+                  source={require('../assets/images/cat_transparency_preserved.png')} 
+                  style={styles.absoluteMascot}
+                  resizeMode="contain"
+                />
+              </LinearGradient>
+              
           </View>
           
           {/* Recent Lists Section */}
@@ -233,22 +240,12 @@ export default function App() {
               onPress={() => setIsCreateModalVisible(true)}
             >
               <View style={styles.iconContainer}>
-                <Ionicons name="add" size={28} color="#8B7355" />
+                <Ionicons name="add" size={24} color="#8B7355" />
               </View>
               <Text style={styles.optionLabel}>Create New List</Text>
-              <Text style={styles.optionDescription}>Build a custom packing list from scratch</Text>
+              <Text style={styles.optionDescription}>Build a custom packing list</Text>
             </TouchableOpacity>
           </View>
-
-          {!user && (
-            <TouchableOpacity 
-              style={styles.signInButton}
-              onPress={() => router.push('/auth/sign-in')}
-            >
-              <Ionicons name="log-in-outline" size={20} color="#FFFFFF" />
-              <Text style={styles.signInButtonText}>Sign In</Text>
-            </TouchableOpacity>
-          )}
         </View>
       </ScrollView>
       
@@ -281,22 +278,25 @@ const styles = StyleSheet.create({
   },
   heroSection: {
     marginBottom: 30,
+    position: 'relative',
   },
   heroCard: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderRadius: 24,
-    padding: 20,
+    borderRadius: 20,
+    padding: 16,
+    height: 120,
+    position: 'relative',
     ...Platform.select({
       ios: {
         shadowColor: '#8B7355',
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.3,
-        shadowRadius: 15,
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.25,
+        shadowRadius: 12,
       },
       android: {
-        elevation: 8,
+        elevation: 6,
       },
     }),
   },
@@ -304,22 +304,29 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   heroTitle: {
-    fontSize: 32,
+    fontSize: 24,
     fontWeight: 'bold',
     color: '#FFFFFF',
-    marginBottom: 8,
+    marginBottom: 6,
     textShadowColor: 'rgba(0, 0, 0, 0.2)',
     textShadowOffset: { width: 1, height: 1 },
     textShadowRadius: 3,
   },
   heroSubtitle: {
-    fontSize: 18,
+    fontSize: 16,
     color: '#FFF8E7',
   },
-  mascotImage: {
-    width: 120,
-    height: 120,
-    transform: [{ translateY: -10 }], // Slight lift for 3D effect
+  mascotPlaceholder: {
+    width: 140,
+    height: 140,
+  },
+  absoluteMascot: {
+    width: 180,
+    height: 180,
+    position: 'absolute',
+    right: -15,
+    bottom: -35,
+    transform: [{ scaleX: -1 }],
   },
   sectionTitle: {
     fontSize: 22,
@@ -351,17 +358,17 @@ const styles = StyleSheet.create({
     }),
   },
   largeCard: {
-    height: 160,
+    height: 130,
     alignItems: 'flex-start',
   },
   iconContainer: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
     backgroundColor: '#F0EAD6',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 10,
     ...Platform.select({
       ios: {
         shadowColor: '#8B7355',
@@ -375,15 +382,15 @@ const styles = StyleSheet.create({
     }),
   },
   optionLabel: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
     color: '#4A3C2C',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   optionDescription: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#8B7355',
-    lineHeight: 20,
+    lineHeight: 18,
   },
   signInButton: {
     marginTop: 30,
@@ -498,5 +505,26 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#8B7355',
     textAlign: 'center',
+  },
+  createButton: {
+    backgroundColor: '#6B8E23',
+    borderRadius: 16,
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#8B7355',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
   },
 });

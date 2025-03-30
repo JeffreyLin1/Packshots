@@ -392,67 +392,46 @@ export default function CameraScreen() {
     }
   };
 
-  const fetchWeatherData = async (showStatus = false) => {
-    try {
-      if (showStatus) setWeatherStatus('Requesting location permission...');
-      // Request location permission
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      setLocationPermission(status === 'granted');
-      
-      if (status !== 'granted') {
-        if (showStatus) setWeatherStatus('Location permission denied');
-        return;
-      }
-      
-      if (showStatus) setWeatherStatus('Getting current location...');
-      // Get current location
-      const location = await Location.getCurrentPositionAsync({});
-      const { latitude, longitude } = location.coords;
-      
-      // Use your API key directly
-      const apiKey = '8dc5907fdc10027ab6b41a7221ea06a6';
-      
-      if (showStatus) setWeatherStatus(`Fetching weather data...`);
-      
-      // Fetch current weather
-      const weatherResponse = await fetch(
-        `https://api.openweathermap.org/data/2.5/weather?lat=${latitude}&lon=${longitude}&units=metric&appid=${apiKey}`
-      );
-      const currentWeather = await weatherResponse.json();
-      
-      if (currentWeather.cod && currentWeather.cod !== 200) {
-        if (showStatus) setWeatherStatus(`Weather API error: ${currentWeather.message || 'Unknown error'}`);
-        return;
-      }
-      
-      // Fetch forecast for rain prediction - removed the status message here
-      const forecastResponse = await fetch(
-        `https://api.openweathermap.org/data/2.5/forecast?lat=${latitude}&lon=${longitude}&units=metric&appid=${apiKey}`
-      );
-      const forecast = await forecastResponse.json();
-      
-      if (forecast.cod && forecast.cod !== '200') {
-        if (showStatus) setWeatherStatus(`Forecast API error: ${forecast.message || 'Unknown error'}`);
-        return;
-      }
-      
-      // The API response structure is different than what we expected
-      // Let's adjust our data structure to match the actual API response
-      const combinedWeatherData = {
-        current: currentWeather,
-        forecast: forecast
-      };
-      
-      setWeatherData(combinedWeatherData);
-      if (showStatus) setWeatherStatus('');
-      
-      // Generate suggestions based on weather
-      generateWeatherSuggestions(combinedWeatherData);
-      
-    } catch (error) {
-      setWeatherStatus(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+const fetchWeatherData = async (showStatus = false) => {
+  try {
+    if (showStatus) setWeatherStatus('Requesting location permission...');
+    // Request location permission
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    setLocationPermission(status === 'granted');
+    
+    if (status !== 'granted') {
+      if (showStatus) setWeatherStatus('Location permission denied');
+      return;
     }
-  };
+    
+    if (showStatus) setWeatherStatus('Getting current location...');
+    // Get current location
+    const location = await Location.getCurrentPositionAsync({});
+    const { latitude, longitude } = location.coords;
+    
+    if (showStatus) setWeatherStatus(`Fetching weather data...`);
+    
+    // Call the Supabase Edge Function instead of direct API calls
+    const { data, error } = await supabase.functions.invoke('weather-api', {
+      body: { latitude, longitude },
+    });
+    
+    if (error) {
+      if (showStatus) setWeatherStatus(`Error: ${error.message}`);
+      console.error('Weather API error:', error);
+      return;
+    }
+    
+    setWeatherData(data);
+    if (showStatus) setWeatherStatus('');
+    
+    // Generate suggestions based on weather
+    generateWeatherSuggestions(data);
+    
+  } catch (error) {
+    setWeatherStatus(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+};
 
   const generateWeatherSuggestions = (data: any) => {
     const suggestions: string[] = [];

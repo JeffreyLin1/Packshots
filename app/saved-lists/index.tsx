@@ -6,7 +6,9 @@ import {
   TouchableOpacity,
   FlatList,
   SafeAreaView,
-  Alert
+  Alert,
+  ActivityIndicator,
+  Image
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -19,24 +21,19 @@ export default function SavedListsScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedList, setSelectedList] = useState<PackingList | null>(null);
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
+  const [isCreateModalVisible, setIsCreateModalVisible] = useState(false);
 
-  // Load all saved lists on component mount
   useEffect(() => {
-    loadSavedLists();
+    loadLists();
   }, []);
 
-  // Load lists from AsyncStorage
-  const loadSavedLists = async () => {
+  const loadLists = async () => {
     setIsLoading(true);
     try {
       const savedListsJson = await AsyncStorage.getItem('packingLists');
       if (savedListsJson) {
         const savedLists = JSON.parse(savedListsJson) as PackingList[];
-        // Sort by most recent first
-        savedLists.sort((a, b) => b.createdAt - a.createdAt);
         setLists(savedLists);
-      } else {
-        setLists([]);
       }
     } catch (error) {
       console.error('Failed to load lists:', error);
@@ -46,81 +43,35 @@ export default function SavedListsScreen() {
     }
   };
 
-  // Update an existing list
-  const updateList = async (listData: Omit<PackingList, 'id' | 'createdAt'>) => {
-    if (!selectedList) return;
-    
+  const handleCreateList = async (newList: PackingList) => {
     try {
-      // Create updated list object
-      const updatedList: PackingList = {
-        ...selectedList,
-        title: listData.title,
-        items: listData.items,
-        icon: listData.icon,
-      };
-      
-      // Get existing lists
-      const existingListsJson = await AsyncStorage.getItem('packingLists');
-      if (!existingListsJson) return;
-      
-      const existingLists: PackingList[] = JSON.parse(existingListsJson);
-      
-      // Find and update the list
-      const updatedLists = existingLists.map(list => 
-        list.id === updatedList.id ? updatedList : list
-      );
-      
-      // Save back to storage
+      const updatedLists = [...lists, newList];
       await AsyncStorage.setItem('packingLists', JSON.stringify(updatedLists));
-      
-      // Update state
       setLists(updatedLists);
-      
-      // Close modal
-      setIsEditModalVisible(false);
-      setSelectedList(null);
-      
-      Alert.alert('Success', 'List updated successfully!');
+      setIsCreateModalVisible(false);
     } catch (error) {
-      console.error('Failed to update list:', error);
-      Alert.alert('Error', 'Failed to update the list. Please try again.');
+      console.error('Failed to save new list:', error);
+      Alert.alert('Error', 'Failed to save your new list.');
     }
   };
 
-  // Delete a list
-  const deleteList = async (listId: string) => {
+  const handleDeleteList = async (listId: string) => {
     Alert.alert(
       'Confirm Delete',
-      'Are you sure you want to delete this list? This action cannot be undone.',
+      'Are you sure you want to delete this list?',
       [
-        {
-          text: 'Cancel',
-          style: 'cancel'
-        },
+        { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
             try {
-              // Get existing lists
-              const existingListsJson = await AsyncStorage.getItem('packingLists');
-              if (!existingListsJson) return;
-              
-              const existingLists: PackingList[] = JSON.parse(existingListsJson);
-              
-              // Filter out the list to delete
-              const updatedLists = existingLists.filter(list => list.id !== listId);
-              
-              // Save back to storage
+              const updatedLists = lists.filter(list => list.id !== listId);
               await AsyncStorage.setItem('packingLists', JSON.stringify(updatedLists));
-              
-              // Update state
               setLists(updatedLists);
-              
-              Alert.alert('Success', 'List deleted successfully!');
             } catch (error) {
               console.error('Failed to delete list:', error);
-              Alert.alert('Error', 'Failed to delete the list. Please try again.');
+              Alert.alert('Error', 'Failed to delete the list.');
             }
           }
         }
@@ -128,118 +79,94 @@ export default function SavedListsScreen() {
     );
   };
 
-  // Open edit modal for a list
-  const openEditModal = (list: PackingList) => {
-    setSelectedList(list);
-    setIsEditModalVisible(true);
+  const navigateToList = (listId: string) => {
+    router.push(`/list-details/${listId}`);
   };
 
-  // View a list
-  const viewList = (list: PackingList) => {
-    router.push({
-      pathname: '/list-details/[id]',
-      params: { id: list.id }
-    });
-  };
-
-  // Navigate to home screen
-  const goToHome = () => {
-    router.push('/');
-  };
-
-  // Format date
-  const formatDate = (timestamp: number) => {
-    const date = new Date(timestamp);
-    return date.toLocaleDateString('en-US', { 
-      year: 'numeric', 
-      month: 'short', 
-      day: 'numeric' 
-    });
-  };
+  if (isLoading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#5D4FB7" />
+          <Text style={styles.loadingText}>Loading your lists...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Saved Lists</Text>
+        <Text style={styles.headerTitle}>My Lists</Text>
+        <TouchableOpacity 
+          style={styles.createButton}
+          onPress={() => setIsCreateModalVisible(true)}
+        >
+          <Ionicons name="add" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
       </View>
       
       {lists.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <Ionicons name="list-outline" size={48} color="#8B7355" />
-          <Text style={styles.emptyText}>No saved lists yet</Text>
-          <Text style={styles.emptySubtext}>Create a list to get started</Text>
+          <Ionicons name="list-outline" size={64} color="#8B7355" />
+          <Text style={styles.emptyText}>You don't have any lists yet.</Text>
           <TouchableOpacity 
-            style={styles.createButton}
-            onPress={goToHome}
+            style={styles.createFirstButton}
+            onPress={() => setIsCreateModalVisible(true)}
           >
-            <Text style={styles.createButtonText}>Create a List</Text>
+            <Text style={styles.createFirstButtonText}>Create Your First List</Text>
           </TouchableOpacity>
         </View>
       ) : (
-        <FlatList
-          data={lists}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <View style={styles.listCard}>
-              <View style={styles.listHeader}>
-                <View style={styles.listTitleContainer}>
-                  <View style={styles.listIconContainer}>
-                    <Ionicons name={item.icon || "list"} size={20} color="#5D4FB7" />
-                  </View>
-                  <Text style={styles.listTitle}>{item.title}</Text>
-                </View>
-                <View style={styles.listActions}>
-                  <TouchableOpacity 
-                    style={styles.actionButton}
-                    onPress={() => openEditModal(item)}
-                  >
-                    <Ionicons name="create-outline" size={20} color="#5D4FB7" />
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                    style={styles.actionButton}
-                    onPress={() => deleteList(item.id)}
-                  >
-                    <Ionicons name="trash-outline" size={20} color="#E74C3C" />
-                  </TouchableOpacity>
-                </View>
-              </View>
-              
-              <View style={styles.listDetails}>
-                <Text style={styles.listSubtitle}>{item.items.length} items</Text>
-                <Text style={styles.listDate}>{formatDate(item.createdAt)}</Text>
-              </View>
-              
+        <View style={styles.listViewContainer}>
+          <View style={styles.catImageContainer}>
+            <Image 
+              source={require('../../assets/images/thinking_cat_transparent.png')} 
+              style={styles.catImage}
+              resizeMode="contain"
+            />
+          </View>
+          
+          <FlatList
+            data={lists}
+            keyExtractor={item => item.id}
+            renderItem={({ item }) => (
               <TouchableOpacity 
-                style={styles.viewButton}
-                onPress={() => viewList(item)}
+                style={styles.listCard}
+                onPress={() => navigateToList(item.id)}
               >
-                <Text style={styles.viewButtonText}>View List</Text>
-                <Ionicons name="chevron-forward" size={16} color="#5D4FB7" />
+                <View style={styles.listIconContainer}>
+                  <Ionicons 
+                    name={item.icon as any || "list-outline"} 
+                    size={24} 
+                    color="#8B7355" 
+                  />
+                </View>
+                <View style={styles.listContent}>
+                  <Text style={styles.listTitle}>{item.title}</Text>
+                  <Text style={styles.listSubtitle}>
+                    {item.items.length} {item.items.length === 1 ? 'item' : 'items'}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.deleteButton}
+                  onPress={() => handleDeleteList(item.id)}
+                >
+                  <Ionicons name="trash-outline" size={20} color="#E57373" />
+                </TouchableOpacity>
               </TouchableOpacity>
-            </View>
-          )}
-          contentContainerStyle={styles.listContainer}
-          showsVerticalScrollIndicator={false}
-        />
+            )}
+            contentContainerStyle={styles.listContainer}
+          />
+        </View>
       )}
       
-      {/* Edit List Modal */}
-      {selectedList && (
-        <ListModal
-          isVisible={isEditModalVisible}
-          onClose={() => {
-            setIsEditModalVisible(false);
-            setSelectedList(null);
-          }}
-          onSave={updateList}
-          initialData={{
-            title: selectedList.title,
-            items: selectedList.items,
-            icon: selectedList.icon
-          }}
-          mode="edit"
-        />
-      )}
+      <ListModal
+        visible={isCreateModalVisible}
+        onClose={() => setIsCreateModalVisible(false)}
+        onSave={handleCreateList}
+        initialList={null}
+      />
       
       <TabBar />
     </SafeAreaView>
@@ -249,18 +176,29 @@ export default function SavedListsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5DC',
+    backgroundColor: '#F8F4E3',
   },
   header: {
-    paddingVertical: 15,
-    paddingHorizontal: 20,
-    backgroundColor: '#E8DBC5',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E8DBC5',
   },
   headerTitle: {
     fontSize: 20,
     fontWeight: 'bold',
     color: '#4A3C2C',
+  },
+  createButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#5D4FB7',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   emptyContainer: {
     flex: 1,
@@ -270,50 +208,38 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 18,
-    fontWeight: 'bold',
-    color: '#4A3C2C',
-    marginTop: 20,
-  },
-  emptySubtext: {
-    fontSize: 14,
     color: '#8B7355',
+    marginTop: 16,
+    marginBottom: 24,
     textAlign: 'center',
-    marginTop: 10,
-    marginBottom: 20,
   },
-  createButton: {
+  createFirstButton: {
     backgroundColor: '#5D4FB7',
     paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    marginTop: 10,
+    paddingHorizontal: 24,
+    borderRadius: 25,
   },
-  createButtonText: {
+  createFirstButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
   },
   listContainer: {
-    padding: 20,
+    padding: 16,
+    paddingBottom: 120,
   },
   listCard: {
-    backgroundColor: '#F8F4E3',
-    borderRadius: 12,
-    marginBottom: 15,
-    borderWidth: 1,
-    borderColor: '#E8DBC5',
-    overflow: 'hidden',
-  },
-  listHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    backgroundColor: '#FFF8E7',
+    borderRadius: 16,
     padding: 15,
-    paddingBottom: 10,
-  },
-  listTitleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    marginBottom: 10,
+    shadowColor: '#8B7355',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
   listIconContainer: {
     width: 40,
@@ -324,44 +250,44 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginRight: 12,
   },
+  listContent: {
+    flex: 1,
+  },
   listTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 16,
+    fontWeight: '600',
     color: '#4A3C2C',
-  },
-  listActions: {
-    flexDirection: 'row',
-  },
-  actionButton: {
-    padding: 8,
-    marginLeft: 8,
-  },
-  listDetails: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 15,
-    paddingBottom: 12,
   },
   listSubtitle: {
     fontSize: 14,
     color: '#8B7355',
+    marginTop: 2,
   },
-  listDate: {
-    fontSize: 12,
-    color: '#8B7355',
+  deleteButton: {
+    padding: 8,
   },
-  viewButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  loadingContainer: {
+    flex: 1,
     justifyContent: 'center',
-    paddingVertical: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#E8DBC5',
+    alignItems: 'center',
   },
-  viewButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#5D4FB7',
-    marginRight: 4,
+  loadingText: {
+    fontSize: 16,
+    color: '#8B7355',
+    marginTop: 12,
+  },
+  listViewContainer: {
+    flex: 1,
+    position: 'relative',
+  },
+  catImageContainer: {
+    position: 'absolute',
+    bottom: 10,
+    right: -40,
+    zIndex: -1,
+  },
+  catImage: {
+    width: 350,
+    height: 350,
   },
 });

@@ -43,27 +43,15 @@ export default function TabBar() {
       </TouchableOpacity>
       
       <TouchableOpacity 
-        style={[styles.tabItem, isActive('/check-list') && styles.activeTab]}
-        onPress={() => navigateTo('/check-list')}
-      >
-        <Ionicons 
-          name={isActive('/check-list') ? "checkmark-circle" : "checkmark-circle-outline"} 
-          size={24} 
-          color={isActive('/check-list') ? "#5D4FB7" : "#8B7355"} 
-        />
-        <Text style={[styles.tabLabel, isActive('/check-list') && styles.activeTabLabel]}>Check</Text>
-      </TouchableOpacity>
-      
-      <TouchableOpacity 
         style={[styles.tabItem, isActive('/profile') && styles.activeTab]}
         onPress={() => navigateTo('/profile')}
       >
         <Ionicons 
-          name={isActive('/profile') ? "person" : "person-outline"} 
+          name={isActive('/profile') ? "settings" : "settings-outline"} 
           size={24} 
           color={isActive('/profile') ? "#5D4FB7" : "#8B7355"} 
         />
-        <Text style={[styles.tabLabel, isActive('/profile') && styles.activeTabLabel]}>Profile</Text>
+        <Text style={[styles.tabLabel, isActive('/profile') && styles.activeTabLabel]}>Settings</Text>
       </TouchableOpacity>
     </View>
   );
@@ -74,13 +62,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     borderTopWidth: 1,
     borderTopColor: '#E8DBC5',
-    paddingVertical: 10,
+    paddingVertical: 5,
     backgroundColor: '#F8F4E3',
   },
   tabItem: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: 5,
   },
   activeTab: {
     borderTopWidth: 2,
@@ -88,8 +76,8 @@ const styles = StyleSheet.create({
     marginTop: -1,
   },
   tabLabel: {
-    fontSize: 12,
-    marginTop: 4,
+    fontSize: 11,
+    marginTop: 2,
     color: '#8B7355',
   },
   activeTabLabel: {
