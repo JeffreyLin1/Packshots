@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "LugLense",
-    "slug": "LugLense",
+    "name": "Packshots",
+    "slug": "Packshots",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -10,7 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.LugLense",
+      "bundleIdentifier": "com.anonymous.Packshots",
       "infoPlist": {
         "NSSpeechRecognitionUsageDescription": "This app uses speech recognition to check off items on your packing list as you speak.",
         "NSMicrophoneUsageDescription": "This app needs access to your microphone to enable voice recognition for checking items."
@@ -25,7 +25,7 @@
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO"
       ],
-      "package": "com.anonymous.LugLense"
+      "package": "com.anonymous.Packshots"
     },
     "web": {
       "bundler": "metro",
